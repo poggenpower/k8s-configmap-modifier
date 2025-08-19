@@ -46,7 +46,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: config-modifier
-        image: ghcr.io/GITHUB_USERNAME/configmap-modifier:latest
+        image: ghcr.io/GITHUB_USERNAME/k8s-configmap-modifier:latest
         command: ["/bin/sh"]
         args:
           - -c

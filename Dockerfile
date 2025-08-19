@@ -14,6 +14,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy scripts directory
+COPY scripts/ ./scripts/
+
 # Create non-root user
 RUN adduser -D -s /bin/sh appuser
 USER appuser
