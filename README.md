@@ -61,16 +61,19 @@ docker build -t configmap-modifier .
 docker run --rm configmap-modifier python --version
 ```
 
-## Configuration
+## Configuration via Environment Variables
 
-### Source ConfigMap (`backup-template`)
-Contains the base YAML configuration that will be modified.
+You can customize the behavior of the modifier using the following environment variables:
 
-### Directories ConfigMap (`backup-directories`)
-Contains the list of directories to add, one per line.
+| Environment Variable         | Default Value        | Description                                                      |
+|------------------------------|----------------------|------------------------------------------------------------------|
+| `SOURCE_CONFIGMAP_NAME`      | `backup-template`    | Name of the source ConfigMap containing the base YAML config     |
+| `DIRECTORIES_CONFIGMAP_NAME` | `backup-directories` | Name of the ConfigMap listing directories to add                 |
+| `TARGET_CONFIGMAP_NAME`      | `backup-config`      | Name of the target ConfigMap to create or update                 |
+| `DIRECTORY_KEY`              | `directories`        | Key in the YAML config where directories are listed              |
 
-### Target ConfigMap (`backup-config`)
-The resulting ConfigMap with the modified configuration.
+Set these variables in your Kubernetes manifest or Docker run command to override defaults.
+
 
 ## Development
 

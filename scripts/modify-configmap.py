@@ -3,6 +3,7 @@
 import yaml
 import json
 import logging
+import os
 from kubernetes import client, config
 
 # Configure logging
@@ -16,6 +17,12 @@ logger = logging.getLogger('backup-config-modifier')
 def main():
     logger.info('Starting backup configuration modifier')
     
+    # Configurable names and key via ENV
+    source_cm_name = os.environ.get('SOURCE_CONFIGMAP_NAME', 'backup-template')
+    dirs_cm_name = os.environ.get('DIRECTORIES_CONFIGMAP_NAME', 'backup-directories')
+    target_cm_name = os.environ.get('TARGET_CONFIGMAP_NAME', 'backup-config')
+    directory_key = os.environ.get('DIRECTORY_KEY', 'directories')
+
     # Load in-cluster config
     logger.info('Loading Kubernetes in-cluster configuration')
     try:
@@ -27,11 +34,15 @@ def main():
         exit(1)
     
     try:
+        # get own namespace
+        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace") as f:
+            namespace = f.read().strip()
+
         # Read the source configmap
-        logger.info('Reading source ConfigMap: backup-template')
+        logger.info(f'Reading source ConfigMap: {source_cm_name}')
         source_cm = v1.read_namespaced_config_map(
-            name='backup-template',
-            namespace='default'
+            name=source_cm_name,
+            namespace=namespace
         )
         logger.info(f'Source ConfigMap found with keys: {list(source_cm.data.keys())}')
         
@@ -42,18 +53,18 @@ def main():
         logger.debug(f'Full configuration: {config_data}')
         
         # Ensure directories list exists
-        logger.info('Checking directories list in configuration')
-        if 'directories' not in config_data:
-            config_data['directories'] = []
-            logger.warning('Created new directories list (was missing from config)')
+        logger.info(f'Checking {directory_key} list in configuration')
+        if directory_key not in config_data:
+            config_data[directory_key] = []
+            logger.warning(f'Created new {directory_key} list (was missing from config)')
         else:
-            logger.info(f'Existing directories: {config_data["directories"]}')
+            logger.info(f'Existing {directory_key}: {config_data[directory_key]}')
         
         # Read the directories to add from ConfigMap
-        logger.info('Reading directories to add from ConfigMap: backup-directories')
+        logger.info(f'Reading directories to add from ConfigMap: {dirs_cm_name}')
         dirs_cm = v1.read_namespaced_config_map(
-            name='backup-directories',
-            namespace='default'
+            name=dirs_cm_name,
+            namespace=namespace
         )
         
         # Parse the directories list
@@ -65,8 +76,8 @@ def main():
         logger.info(f'Adding required directories: {new_dirs}')
         added_dirs = []
         for dir_name in new_dirs:
-            if dir_name not in config_data['directories']:
-                config_data['directories'].append(dir_name)
+            if dir_name not in config_data[directory_key]:
+                config_data[directory_key].append(dir_name)
                 added_dirs.append(dir_name)
                 logger.debug(f'Added directory: {dir_name}')
         
@@ -75,7 +86,7 @@ def main():
         else:
             logger.info('All required directories already present')
         
-        logger.info(f'Final directories list: {config_data["directories"]}')
+        logger.info(f'Final {directory_key} list: {config_data[directory_key]}')
         
         # Create the new configmap
         logger.info('Converting modified configuration back to YAML')
@@ -84,34 +95,34 @@ def main():
         logger.debug(f'Generated YAML content:\n{new_config_yaml}')
         
         # Check if target configmap exists
-        logger.info('Checking if target ConfigMap backup-config exists')
+        logger.info(f'Checking if target ConfigMap {target_cm_name} exists')
         try:
             existing_cm = v1.read_namespaced_config_map(
-                name='backup-config',
-                namespace='default'
+                name=target_cm_name,
+                namespace=namespace 
             )
             logger.info('Target ConfigMap exists - updating')
             # Update existing configmap
             existing_cm.data = {'config.yaml': new_config_yaml}
             v1.replace_namespaced_config_map(
-                name='backup-config',
-                namespace='default',
+                name=target_cm_name,
+                namespace=namespace,
                 body=existing_cm
             )
-            logger.info('Successfully updated existing backup-config ConfigMap')
+            logger.info(f'Successfully updated existing {target_cm_name} ConfigMap')
         except client.rest.ApiException as e:
             if e.status == 404:
                 logger.info('Target ConfigMap does not exist - creating new one')
                 # Create new configmap
                 new_cm = client.V1ConfigMap(
-                    metadata=client.V1ObjectMeta(name='backup-config'),
+                    metadata=client.V1ObjectMeta(name=target_cm_name),
                     data={'config.yaml': new_config_yaml}
                 )
                 v1.create_namespaced_config_map(
-                    namespace='default',
+                    namespace=namespace,
                     body=new_cm
                 )
-                logger.info('Successfully created new backup-config ConfigMap')
+                logger.info(f'Successfully created new {target_cm_name} ConfigMap')
             else:
                 logger.error(f'API error while checking ConfigMap: {e}')
                 raise
