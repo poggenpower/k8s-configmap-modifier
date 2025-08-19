@@ -1,0 +1,90 @@
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-config-modifier
+  namespace: default
+
+---
+# ClusterRole with necessary permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: configmap-modifier
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "create", "update", "patch"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backup-config-modifier-binding
+subjects:
+- kind: ServiceAccount
+  name: backup-config-modifier
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: configmap-modifier
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Job to run the Python script
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup-config-modifier-job
+  namespace: default
+spec:
+  template:
+    spec:
+      serviceAccountName: backup-config-modifier
+      restartPolicy: Never
+      containers:
+      - name: config-modifier
+        image: ghcr.io/GITHUB_USERNAME/configmap-modifier:latest
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            python /app/scripts/modify-configmap.py
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example source ConfigMap (backup-template)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-template
+  namespace: default
+data:
+  config.yaml: |
+    directories:
+      - logs
+      - data
+    retention_days: 7
+    compression: true
+    schedule: "0 2 * * *"
+
+---
+# Additional ConfigMap with backup directories to add
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-directories
+  namespace: default
+data:
+  strings: |
+    wurst
+    backup
+    bilder
