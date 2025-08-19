@@ -17,6 +17,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write  # Required for security scanning
+      actions: read           # Required for security scanning
 
     steps:
     - name: Checkout repository
@@ -56,16 +58,28 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    # Security scanning (only on main branch to avoid permission issues)
     - name: Run security scan
-      if: github.event_name != 'pull_request'
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
         format: 'sarif'
         output: 'trivy-results.sarif'
 
-    - name: Upload Trivy scan results
-      if: github.event_name != 'pull_request'
-      uses: github/codeql-action/upload-sarif@v2
+    - name: Upload Trivy scan results to GitHub Security tab
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'
+      continue-on-error: true  # Don't fail the workflow if security upload fails
+
+    # Alternative: Simple security scan output to logs (always runs)
+    - name: Run security scan (log output)
+      if: github.event_name != 'pull_request'
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        format: 'table'
+        severity: 'CRITICAL,HIGH'
+      continue-on-error: true
