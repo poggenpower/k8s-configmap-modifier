@@ -1,0 +1,103 @@
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-config-modifier
+  namespace: duplicity-backup
+
+---
+# ClusterRole with necessary permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: configmap-modifier
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "update"]
+
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backup-config-modifier-binding
+subjects:
+- kind: ServiceAccount
+  name: backup-config-modifier
+  namespace: duplicity-backup
+roleRef:
+  kind: ClusterRole
+  name: configmap-modifier
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Job to run the Python script
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup-config-modifier-job
+  namespace: duplicity-backup
+spec:
+  template:
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      nodeSelector:
+        kubernetes.io/hostname: "k8s-node01e"
+
+      serviceAccountName: backup-config-modifier
+      restartPolicy: Never
+      containers:
+      - name: config-modifier
+        image: ghcr.io/poggenpower/k8s-configmap-modifier:latest
+        imagePullPolicy: Always
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            sleep 36000; python /app/scripts/modify-configmap.py
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: longhorn-local-storage
+          mountPath: /local-storage
+      volumes:
+      - name: longhorn-local-storage
+        hostPath:
+          path: /var/lib/longhorn/local-storage
+          type: Directory
+
+# ---
+# # Example source ConfigMap (backup-template)
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: backup-template
+#   namespace: duplicity-backup
+# data:
+#   config.yaml: |
+#     directories: []
+#     retention_days: 7
+#     compression: true
+#     schedule: "0 2 * * *"
+
+# ---
+# # Additional ConfigMap with backup directories to add
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: backup-directories
+#   namespace: duplicity-backup
+# data:
+#   strings: |
+#     wurst
+#     backup
+#     bilder

@@ -1,0 +1,59 @@
+# Use for testing the script locally, without updating the container.
+
+# Create an new user following the common guidelines.
+# create a kubeconfig, using this user, use follwoing roles 
+# to allow user the operations (you may need to update namespaces)
+# user KUBECONFIG env var to point to your kubeconfig, it will be 
+#recognizes from the script
+
+# ClusterRole for persistentvolumes (cluster-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pv-viewer
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["list"]
+---
+# Role for configmaps (namespaced)
+# You should create this in the namespace where the user needs access.
+# For example, in the 'default' namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: duplicity-backup
+  name: configmap-editor
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "create", "update"]
+---
+# ClusterRoleBinding to link the ClusterRole to the user
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backupdiscover-pv-viewer-binding
+subjects:
+- kind: User
+  name: backupdiscover  # This must match the CN from your CSR
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: pv-viewer
+  apiGroup: rbac.authorization.k8s.io
+---
+# RoleBinding to link the Role to the user in the specified namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backupdiscover-configmap-editor-binding
+  namespace: duplicity-backup
+subjects:
+- kind: User
+  name: backupdiscover # This must match the CN from your CSR
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: configmap-editor
+  apiGroup: rbac.authorization.k8s.io
